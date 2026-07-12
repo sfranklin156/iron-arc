@@ -203,8 +203,7 @@ function renderStreak() {
 let wakeLock = null;
 
 function isActivelyLogging() {
-  const step2 = document.getElementById('startStep2');
-  return !!(step2 && !step2.hidden && startState.draft);
+  return !!(startState.inBuilder && startState.draft);
 }
 
 async function acquireWakeLock() {
@@ -296,6 +295,9 @@ const startState = {
   categoryId: null,
   draft: null,        // { date, categoryId, exercises: [] }
   logger: null,        // { exerciseId, name, type, equipment, sets: [], notes, isNew }
+  editingIndex: null,  // index into draft.exercises being edited, or null when logging a new entry
+  loggerSnapshot: null, // JSON snapshot of the logger's sets/notes when the fullscreen view opened, to detect real edits
+  inBuilder: false,    // true whenever the Start-tab builder (category screen or fullscreen exercise view) is open
 };
 
 function renderCategoryGrid() {
@@ -347,6 +349,8 @@ function openCategoryBuilder(categoryId) {
     startState.draft = { date: todayStr(), categoryId, exercises: [] };
   }
   startState.logger = null;
+  startState.editingIndex = null;
+  startState.inBuilder = true;
 
   document.getElementById('startStep1').hidden = true;
   document.getElementById('startStep2').hidden = false;
@@ -356,7 +360,6 @@ function openCategoryBuilder(categoryId) {
   document.getElementById('workoutDate').value = startState.draft.date;
 
   renderWordBank();
-  renderLogger();
   renderWorkoutDraft();
   acquireWakeLock();
 }
@@ -364,6 +367,7 @@ function openCategoryBuilder(categoryId) {
 function backToCategories() {
   document.getElementById('startStep1').hidden = false;
   document.getElementById('startStep2').hidden = true;
+  startState.inBuilder = false;
   renderCategoryGrid();
   releaseWakeLock();
   stopRestTimer();
@@ -418,8 +422,60 @@ function startLoggingExercise(ex) {
     notes: '',
     isNew: false,
   };
+  startState.editingIndex = null;
+  openExerciseFullscreen();
+}
+
+function editExistingDraftEntry(index) {
+  const entry = startState.draft.exercises[index];
+  if (!entry) return;
+  startState.logger = {
+    exerciseId: entry.exerciseId,
+    name: entry.name,
+    type: entry.type,
+    equipment: entry.equipment,
+    sets: entry.sets.map(s => ({ ...s })),
+    notes: entry.notes || '',
+    isNew: false,
+  };
+  startState.editingIndex = index;
+  openExerciseFullscreen();
+}
+
+function loggerSnapshotString() {
+  const l = startState.logger;
+  return JSON.stringify({ sets: l.sets, notes: l.notes });
+}
+
+function openExerciseFullscreen() {
+  startState.loggerSnapshot = loggerSnapshotString();
+  document.getElementById('exerciseFullscreen').hidden = false;
   renderLogger();
-  document.getElementById('exerciseLogger').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  acquireWakeLock();
+}
+
+function confirmDiscardLoggerIfNeeded() {
+  const logger = startState.logger;
+  if (!logger) return true;
+
+  if (startState.editingIndex !== null) {
+    // Editing an existing entry: only warn if something actually changed.
+    if (loggerSnapshotString() === startState.loggerSnapshot) return true;
+    return confirm('Discard your changes to this exercise?');
+  }
+
+  // Logging a brand-new entry: only warn if any set field has data.
+  if (!loggerHasData()) return true;
+  return confirm('Discard this exercise? Nothing has been added to your workout yet.');
+}
+
+function closeExerciseFullscreen({ skipConfirm = false } = {}) {
+  if (!skipConfirm && !confirmDiscardLoggerIfNeeded()) return;
+  startState.logger = null;
+  startState.editingIndex = null;
+  startState.loggerSnapshot = null;
+  document.getElementById('exerciseFullscreen').hidden = true;
+  stopRestTimer();
 }
 
 function startNewExerciseFromInput() {
@@ -450,15 +506,14 @@ function startNewExerciseFromInput() {
     exerciseId: ex.id, name: ex.name, type: ex.type, equipment: ex.equipment,
     sets: [blankSet(ex.type)], notes: '', isNew: true,
   };
+  startState.editingIndex = null;
   nameInput.value = '';
-  renderLogger();
+  openExerciseFullscreen();
 }
 
 function renderLogger() {
   const logger = startState.logger;
-  const el = document.getElementById('exerciseLogger');
-  if (!logger) { el.hidden = true; return; }
-  el.hidden = false;
+  if (!logger) return;
 
   document.getElementById('loggerExerciseName').textContent = logger.name;
   document.getElementById('loggerTypeTag').textContent =
@@ -579,11 +634,6 @@ function sameAsLastSet() {
   renderLogger();
 }
 
-function cancelLogger() {
-  startState.logger = null;
-  renderLogger();
-}
-
 function addLoggerToWorkout() {
   const logger = startState.logger;
   if (!logger) return;
@@ -594,19 +644,27 @@ function addLoggerToWorkout() {
 
   logger.notes = document.getElementById('exerciseNotes').value.trim();
 
-  startState.draft.exercises.push({
+  const entry = {
     exerciseId: logger.exerciseId,
     name: logger.name,
     type: logger.type,
     equipment: logger.equipment,
     sets: logger.sets.map(s => ({ ...s })),
     notes: logger.notes,
-  });
+  };
 
-  startState.logger = null;
-  renderLogger();
+  const countBefore = startState.draft.exercises.length;
+  if (startState.editingIndex !== null) {
+    startState.draft.exercises[startState.editingIndex] = entry;
+  } else {
+    startState.draft.exercises.push(entry);
+  }
+  const countAfter = startState.draft.exercises.length;
+  console.log(`[Iron Arc] Add to Workout: "${entry.name}" — draft.exercises ${countBefore} -> ${countAfter} (${startState.editingIndex !== null ? 'edited existing' : 'added new'})`);
+
+  closeExerciseFullscreen({ skipConfirm: true });
   renderWorkoutDraft();
-  showToast(`${logger.name} added to workout.`);
+  showToast(`${entry.name} added to workout.`);
 }
 
 function renderWorkoutDraft() {
@@ -614,9 +672,14 @@ function renderWorkoutDraft() {
   const section = document.getElementById('thisWorkoutSection');
   if (!draft || draft.exercises.length === 0) {
     section.hidden = true;
+    console.log('[Iron Arc] renderWorkoutDraft: 0 exercises — Finish bar hidden.');
     return;
   }
   section.hidden = false;
+  console.log(`[Iron Arc] renderWorkoutDraft: ${draft.exercises.length} exercise(s) — Finish bar visible.`);
+
+  document.getElementById('thisWorkoutCount').textContent =
+    `· ${draft.exercises.length} exercise${draft.exercises.length === 1 ? '' : 's'}`;
 
   const list = document.getElementById('workoutDraftList');
   list.innerHTML = '';
@@ -624,27 +687,21 @@ function renderWorkoutDraft() {
     const row = document.createElement('div');
     row.className = 'draft-exercise';
     row.innerHTML = `
-      <div>
-        <div class="draft-exercise-name">${escapeHtml(ex.name)}</div>
-        <div class="draft-exercise-sets">${formatSetsSummary(ex)}</div>
-        ${ex.notes ? `<div class="draft-exercise-notes">"${escapeHtml(ex.notes)}"</div>` : ''}
-      </div>
+      <span class="draft-exercise-main">
+        <span class="draft-exercise-check">&check;</span>
+        <span class="draft-exercise-name">${escapeHtml(ex.name)}</span>
+      </span>
+      <span class="draft-exercise-count">${ex.sets.length} set${ex.sets.length === 1 ? '' : 's'}</span>
       <button class="remove-draft-btn" title="Remove exercise">&times;</button>
     `;
-    row.querySelector('.remove-draft-btn').addEventListener('click', () => {
+    row.addEventListener('click', () => editExistingDraftEntry(i));
+    row.querySelector('.remove-draft-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
       draft.exercises.splice(i, 1);
       renderWorkoutDraft();
     });
     list.appendChild(row);
   });
-}
-
-function formatSetsSummary(ex) {
-  return ex.sets.map(s => {
-    if (ex.type === 'weight') return `${s.reps || 0}×${s.weight || 0}${s.amrap ? '*' : ''}`;
-    if (ex.type === 'bodyweight') return `${s.reps || 0} reps${s.amrap ? '*' : ''}`;
-    return `${s.duration || 0}s`;
-  }).join(', ');
 }
 
 function saveWorkout() {
@@ -666,6 +723,7 @@ function saveWorkout() {
 
   startState.draft = null;
   startState.logger = null;
+  startState.editingIndex = null;
   startState.categoryId = null;
   document.getElementById('activeCalories').value = '';
   document.getElementById('totalCalories').value = '';
@@ -735,66 +793,156 @@ function stopRestTimer() {
 
 let expandedWorkoutId = null;
 
+const historyState = { categoryFilter: 'all', search: '', expandedMonths: null };
+
+function monthKey(dateStr) {
+  return dateStr.slice(0, 7); // 'YYYY-MM'
+}
+
+function monthLabel(key) {
+  const [y, m] = key.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, 1));
+  return dt.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+function renderHistoryFilterChips() {
+  const row = document.getElementById('historyCategoryChips');
+  row.innerHTML = '';
+
+  const allChip = document.createElement('button');
+  allChip.className = 'chip' + (historyState.categoryFilter === 'all' ? ' active' : '');
+  allChip.textContent = 'All';
+  allChip.addEventListener('click', () => { historyState.categoryFilter = 'all'; renderHistory(); });
+  row.appendChild(allChip);
+
+  for (const cat of data.categories) {
+    const chip = document.createElement('button');
+    chip.className = 'chip' + (historyState.categoryFilter === cat.id ? ' active' : '');
+    chip.style.setProperty('--cat-color', cat.color);
+    chip.textContent = cat.name;
+    chip.addEventListener('click', () => { historyState.categoryFilter = cat.id; renderHistory(); });
+    row.appendChild(chip);
+  }
+}
+
+function workoutMatchesSearch(w, query) {
+  if (!query) return true;
+  return w.exercises.some(ex =>
+    ex.name.toLowerCase().includes(query) || (ex.notes || '').toLowerCase().includes(query));
+}
+
 function renderHistory() {
+  renderHistoryFilterChips();
+
   const list = document.getElementById('historyList');
   const empty = document.getElementById('historyEmpty');
   list.innerHTML = '';
 
-  const sorted = [...data.workouts].sort((a, b) =>
+  const allSorted = [...data.workouts].sort((a, b) =>
     parseDateUTCms(b.date) - parseDateUTCms(a.date) || b.createdAt - a.createdAt);
 
-  empty.hidden = sorted.length > 0;
+  if (historyState.expandedMonths === null && allSorted.length > 0) {
+    historyState.expandedMonths = new Set([monthKey(allSorted[0].date)]);
+  }
 
-  for (const w of sorted) {
-    const cat = getCategory(w.categoryId);
-    const item = document.createElement('div');
-    item.className = 'history-item' + (expandedWorkoutId === w.id ? ' expanded' : '');
-    item.style.setProperty('--cat-color', cat ? cat.color : '#9B7FE0');
+  const query = historyState.search.trim().toLowerCase();
+  const filtered = allSorted.filter(w =>
+    (historyState.categoryFilter === 'all' || w.categoryId === historyState.categoryFilter) &&
+    workoutMatchesSearch(w, query));
 
-    const exercisesHtml = w.exercises.map(ex => `
-      <div class="history-exercise">
-        <div class="history-exercise-name">${escapeHtml(ex.name)}</div>
-        <div class="history-set-list">${formatHistorySets(ex)}</div>
-        ${ex.notes ? `<div class="history-exercise-notes">"${escapeHtml(ex.notes)}"</div>` : ''}
-      </div>
-    `).join('');
+  if (filtered.length === 0) {
+    empty.hidden = false;
+    empty.textContent = allSorted.length === 0
+      ? 'No workouts logged yet. Start your training arc!'
+      : 'No workouts match your filters.';
+    return;
+  }
+  empty.hidden = true;
 
-    item.innerHTML = `
-      <div class="history-item-header">
-        <div>
-          <div class="history-item-category">${escapeHtml(cat ? cat.name : 'Unknown')}</div>
-          <div class="history-item-date">${formatDateDisplay(w.date)}</div>
-        </div>
-        <span class="link-btn">${expandedWorkoutId === w.id ? 'Hide' : 'View'}</span>
+  const months = new Map();
+  for (const w of filtered) {
+    const key = monthKey(w.date);
+    if (!months.has(key)) months.set(key, []);
+    months.get(key).push(w);
+  }
+
+  for (const [key, workouts] of months) {
+    const expanded = historyState.expandedMonths && historyState.expandedMonths.has(key);
+    const group = document.createElement('div');
+    group.className = 'history-month-group' + (expanded ? ' expanded' : '');
+    group.innerHTML = `
+      <div class="history-month-header">
+        <span>
+          <span class="history-month-title">${monthLabel(key)}</span>
+          <span class="history-month-count">${workouts.length} workout${workouts.length === 1 ? '' : 's'}</span>
+        </span>
+        <span class="history-month-caret">&#9656;</span>
       </div>
-      <div class="history-item-body">
-        ${exercisesHtml}
-        <div class="history-summary">
-          <span>Active: ${w.activeCalories} cal</span>
-          <span>Total: ${w.totalCalories} cal</span>
-          <span>Effort: ${w.effort}/10</span>
-        </div>
-        <div class="history-item-actions">
-          <button class="btn btn-ghost btn-danger delete-workout-btn">Delete Workout</button>
-        </div>
-      </div>
+      <div class="history-month-items"></div>
     `;
-
-    item.querySelector('.history-item-header').addEventListener('click', () => {
-      expandedWorkoutId = expandedWorkoutId === w.id ? null : w.id;
+    group.querySelector('.history-month-header').addEventListener('click', () => {
+      if (!historyState.expandedMonths) historyState.expandedMonths = new Set();
+      if (historyState.expandedMonths.has(key)) historyState.expandedMonths.delete(key);
+      else historyState.expandedMonths.add(key);
       renderHistory();
     });
-    item.querySelector('.delete-workout-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (confirm(`Delete the workout from ${formatDateDisplay(w.date)}? This cannot be undone.`)) {
-        data.workouts = data.workouts.filter(x => x.id !== w.id);
-        saveData();
-        renderAll();
-      }
-    });
-
-    list.appendChild(item);
+    const itemsEl = group.querySelector('.history-month-items');
+    for (const w of workouts) {
+      itemsEl.appendChild(buildHistoryItem(w));
+    }
+    list.appendChild(group);
   }
+}
+
+function buildHistoryItem(w) {
+  const cat = getCategory(w.categoryId);
+  const item = document.createElement('div');
+  item.className = 'history-item' + (expandedWorkoutId === w.id ? ' expanded' : '');
+  item.style.setProperty('--cat-color', cat ? cat.color : '#9B7FE0');
+
+  const exercisesHtml = w.exercises.map(ex => `
+    <div class="history-exercise">
+      <div class="history-exercise-name">${escapeHtml(ex.name)}</div>
+      <div class="history-set-list">${formatHistorySets(ex)}</div>
+      ${ex.notes ? `<div class="history-exercise-notes">"${escapeHtml(ex.notes)}"</div>` : ''}
+    </div>
+  `).join('');
+
+  item.innerHTML = `
+    <div class="history-item-header">
+      <div>
+        <div class="history-item-category">${escapeHtml(cat ? cat.name : 'Unknown')}</div>
+        <div class="history-item-date">${formatDateDisplay(w.date)}</div>
+      </div>
+      <span class="link-btn">${expandedWorkoutId === w.id ? 'Hide' : 'View'}</span>
+    </div>
+    <div class="history-item-body">
+      ${exercisesHtml}
+      <div class="history-summary">
+        <span>Active: ${w.activeCalories} cal</span>
+        <span>Total: ${w.totalCalories} cal</span>
+        <span>Effort: ${w.effort}/10</span>
+      </div>
+      <div class="history-item-actions">
+        <button class="btn btn-ghost btn-danger delete-workout-btn">Delete Workout</button>
+      </div>
+    </div>
+  `;
+
+  item.querySelector('.history-item-header').addEventListener('click', () => {
+    expandedWorkoutId = expandedWorkoutId === w.id ? null : w.id;
+    renderHistory();
+  });
+  item.querySelector('.delete-workout-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (confirm(`Delete the workout from ${formatDateDisplay(w.date)}? This cannot be undone.`)) {
+      data.workouts = data.workouts.filter(x => x.id !== w.id);
+      saveData();
+      renderAll();
+    }
+  });
+
+  return item;
 }
 
 function formatHistorySets(ex) {
@@ -810,7 +958,7 @@ function formatHistorySets(ex) {
    PROGRESS TAB
    ========================================================================= */
 
-const progressState = { exerciseKey: null, range: 'all' };
+const progressState = { exerciseKey: null, range: 'all', filter: '', recentlyViewed: [] };
 
 function allLoggedExercises() {
   const map = new Map();
@@ -818,41 +966,97 @@ function allLoggedExercises() {
     const cat = getCategory(w.categoryId);
     for (const ex of w.exercises) {
       if (!map.has(ex.exerciseId)) {
-        map.set(ex.exerciseId, { exerciseId: ex.exerciseId, name: ex.name, type: ex.type, categoryName: cat ? cat.name : '' });
+        map.set(ex.exerciseId, { exerciseId: ex.exerciseId, name: ex.name, type: ex.type, categoryId: w.categoryId, categoryName: cat ? cat.name : 'Unknown' });
       }
     }
   }
   return [...map.values()];
 }
 
-function renderProgress() {
-  const select = document.getElementById('progressExerciseSelect');
-  const exercises = allLoggedExercises();
-  const nameCounts = {};
-  exercises.forEach(e => { nameCounts[e.name] = (nameCounts[e.name] || 0) + 1; });
+function pushRecentlyViewed(exerciseId) {
+  progressState.recentlyViewed = [exerciseId, ...progressState.recentlyViewed.filter(id => id !== exerciseId)].slice(0, 4);
+}
 
-  const prevValue = progressState.exerciseKey;
-  select.innerHTML = exercises.map(e =>
-    `<option value="${e.exerciseId}">${escapeHtml(e.name)}${nameCounts[e.name] > 1 ? ` (${escapeHtml(e.categoryName)})` : ''}</option>`
-  ).join('');
+function renderProgress() {
+  const exercises = allLoggedExercises();
 
   if (exercises.length === 0) {
     document.getElementById('progressEmpty').hidden = false;
     document.getElementById('progressContent').hidden = true;
+    document.getElementById('progressRecents').innerHTML = '';
     return;
   }
   document.getElementById('progressEmpty').hidden = true;
   document.getElementById('progressContent').hidden = false;
 
-  if (prevValue && exercises.some(e => e.exerciseId === prevValue)) {
-    select.value = prevValue;
-    progressState.exerciseKey = prevValue;
-  } else {
+  if (!progressState.exerciseKey || !exercises.some(e => e.exerciseId === progressState.exerciseKey)) {
     progressState.exerciseKey = exercises[0].exerciseId;
-    select.value = progressState.exerciseKey;
   }
 
+  renderProgressExerciseOptions();
+  renderProgressRecents();
+}
+
+function renderProgressExerciseOptions() {
+  const select = document.getElementById('progressExerciseSelect');
+  const exercises = allLoggedExercises();
+  const query = (progressState.filter || '').trim().toLowerCase();
+  const filtered = query ? exercises.filter(e => e.name.toLowerCase().includes(query)) : exercises;
+
+  const nameCounts = {};
+  exercises.forEach(e => { nameCounts[e.name] = (nameCounts[e.name] || 0) + 1; });
+
+  const byCategory = new Map();
+  for (const ex of filtered) {
+    if (!byCategory.has(ex.categoryId)) byCategory.set(ex.categoryId, []);
+    byCategory.get(ex.categoryId).push(ex);
+  }
+
+  let html = '';
+  for (const cat of data.categories) {
+    const list = byCategory.get(cat.id);
+    if (!list || list.length === 0) continue;
+    html += `<optgroup label="${escapeHtml(cat.name)}">` +
+      list.map(ex => `<option value="${ex.exerciseId}">${escapeHtml(ex.name)}${nameCounts[ex.name] > 1 ? ` (${escapeHtml(ex.categoryName)})` : ''}</option>`).join('') +
+      `</optgroup>`;
+  }
+  select.innerHTML = html;
+
+  if (filtered.length === 0) {
+    document.getElementById('progressChart').innerHTML = '<span class="empty-state">No exercises match your filter.</span>';
+    return;
+  }
+
+  if (!filtered.some(e => e.exerciseId === progressState.exerciseKey)) {
+    progressState.exerciseKey = filtered[0].exerciseId;
+  }
+  select.value = progressState.exerciseKey;
   renderProgressDetail();
+}
+
+function renderProgressRecents() {
+  const container = document.getElementById('progressRecents');
+  const exercises = allLoggedExercises();
+  const recents = progressState.recentlyViewed
+    .map(id => exercises.find(e => e.exerciseId === id))
+    .filter(Boolean)
+    .slice(0, 4);
+
+  container.innerHTML = '';
+  for (const ex of recents) {
+    const btn = document.createElement('button');
+    btn.className = 'recent-chip' + (ex.exerciseId === progressState.exerciseKey ? ' active' : '');
+    btn.textContent = ex.name;
+    btn.addEventListener('click', () => {
+      progressState.exerciseKey = ex.exerciseId;
+      progressState.filter = '';
+      document.getElementById('progressExerciseFilter').value = '';
+      pushRecentlyViewed(ex.exerciseId);
+      renderProgressExerciseOptions();
+      renderProgressRecents();
+    });
+    container.appendChild(btn);
+  }
 }
 
 function metricValue(type, set) {
@@ -1283,7 +1487,7 @@ function bindEvents() {
 
   document.getElementById('addSetBtn').addEventListener('click', addSetRow);
   document.getElementById('sameAsLastBtn').addEventListener('click', sameAsLastSet);
-  document.getElementById('cancelExerciseBtn').addEventListener('click', cancelLogger);
+  document.getElementById('efBackBtn').addEventListener('click', () => closeExerciseFullscreen());
   document.getElementById('addToWorkoutBtn').addEventListener('click', addLoggerToWorkout);
 
   document.getElementById('effortSlider').addEventListener('input', (e) => {
@@ -1293,7 +1497,9 @@ function bindEvents() {
 
   document.getElementById('progressExerciseSelect').addEventListener('change', (e) => {
     progressState.exerciseKey = e.target.value;
+    pushRecentlyViewed(e.target.value);
     renderProgressDetail();
+    renderProgressRecents();
   });
   document.getElementById('progressRangeToggle').addEventListener('click', (e) => {
     const btn = e.target.closest('.range-btn');
@@ -1317,6 +1523,16 @@ function bindEvents() {
   document.getElementById('restTimerMinus').addEventListener('click', () => adjustRestTimer(-15));
   document.getElementById('restTimerPlus').addEventListener('click', () => adjustRestTimer(15));
   document.getElementById('restTimerSkip').addEventListener('click', stopRestTimer);
+
+  document.getElementById('historySearch').addEventListener('input', (e) => {
+    historyState.search = e.target.value;
+    renderHistory();
+  });
+
+  document.getElementById('progressExerciseFilter').addEventListener('input', (e) => {
+    progressState.filter = e.target.value;
+    renderProgressExerciseOptions();
+  });
 }
 
 function init() {

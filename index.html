@@ -94,34 +94,8 @@
         </div>
       </div>
 
-      <div class="exercise-logger" id="exerciseLogger" hidden>
-        <div class="logger-header">
-          <h3 class="subsection-heading" id="loggerExerciseName">Exercise</h3>
-          <span class="type-tag" id="loggerTypeTag"></span>
-        </div>
-        <div class="set-rows" id="setRows"></div>
-        <div class="logger-actions">
-          <button class="btn btn-ghost" id="addSetBtn">+ Add Set</button>
-          <button class="btn btn-ghost" id="sameAsLastBtn">Same as Last Set</button>
-        </div>
-        <div class="rest-timer-controls">
-          <span class="rest-timer-controls-label">Rest Timer</span>
-          <button class="rest-preset-btn" data-secs="60">60s</button>
-          <button class="rest-preset-btn" data-secs="90">90s</button>
-          <button class="rest-preset-btn" data-secs="180">3:00</button>
-        </div>
-        <label class="field-label notes-label">
-          Notes (optional)
-          <input type="text" id="exerciseNotes" class="text-input" placeholder="e.g. went to failure">
-        </label>
-        <div class="logger-footer">
-          <button class="btn btn-ghost" id="cancelExerciseBtn">Cancel</button>
-          <button class="btn btn-primary" id="addToWorkoutBtn">Add to Workout</button>
-        </div>
-      </div>
-
       <div class="this-workout-section" id="thisWorkoutSection" hidden>
-        <h3 class="subsection-heading">This Workout</h3>
+        <h3 class="subsection-heading">This Workout <span id="thisWorkoutCount" class="this-workout-count"></span></h3>
         <div class="workout-draft-list" id="workoutDraftList"></div>
 
         <div class="finish-workout-form">
@@ -148,6 +122,8 @@
   <!-- HISTORY TAB -->
   <section class="tab-panel" id="tab-history">
     <h2 class="section-heading">History</h2>
+    <div class="chip-row history-filter-chips" id="historyCategoryChips"></div>
+    <input type="search" id="historySearch" class="text-input history-search-input" placeholder="Search by exercise or notes…">
     <div class="history-list" id="historyList"></div>
     <p class="empty-state" id="historyEmpty" hidden>No workouts logged yet. Start your training arc!</p>
   </section>
@@ -156,6 +132,11 @@
   <section class="tab-panel" id="tab-progress">
     <h2 class="section-heading">Progress</h2>
     <div class="progress-controls">
+      <div class="progress-recents" id="progressRecents"></div>
+      <label class="field-label">
+        Filter Exercises
+        <input type="search" id="progressExerciseFilter" class="text-input" placeholder="Type to filter…">
+      </label>
       <label class="field-label">
         Exercise
         <select id="progressExerciseSelect" class="select-input"></select>
@@ -243,6 +224,36 @@
   </section>
 
 </main>
+
+<div class="exercise-fullscreen" id="exerciseFullscreen" hidden>
+  <div class="ef-header">
+    <button class="ef-back" id="efBackBtn" title="Back">&larr;</button>
+    <div class="ef-title">
+      <span class="ef-name" id="loggerExerciseName">Exercise</span>
+      <span class="type-tag" id="loggerTypeTag"></span>
+    </div>
+  </div>
+  <div class="ef-body">
+    <div class="set-rows" id="setRows"></div>
+    <div class="logger-actions">
+      <button class="btn btn-ghost" id="addSetBtn">+ Add Set</button>
+      <button class="btn btn-ghost" id="sameAsLastBtn">Same as Last Set</button>
+    </div>
+    <div class="rest-timer-controls">
+      <span class="rest-timer-controls-label">Rest Timer</span>
+      <button class="rest-preset-btn" data-secs="60">60s</button>
+      <button class="rest-preset-btn" data-secs="90">90s</button>
+      <button class="rest-preset-btn" data-secs="180">3:00</button>
+    </div>
+    <label class="field-label notes-label">
+      Notes (optional)
+      <input type="text" id="exerciseNotes" class="text-input" placeholder="e.g. went to failure">
+    </label>
+  </div>
+  <div class="ef-footer">
+    <button class="btn btn-primary btn-large" id="addToWorkoutBtn">Add to Workout</button>
+  </div>
+</div>
 
 <div class="toast" id="toast" hidden></div>
 
