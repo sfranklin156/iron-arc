@@ -16,6 +16,9 @@
   --font-display: 'Cinzel', serif;
   --font-body: 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+
+  --nav-height: 4rem;
+  --touch: 44px;
 }
 
 * { box-sizing: border-box; }
@@ -30,7 +33,7 @@ html, body {
 }
 
 body {
-  padding-bottom: 3rem;
+  padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 1rem);
 }
 
 h1, h2, h3 {
@@ -158,34 +161,45 @@ button, input, select, textarea {
   margin-top: 0.3rem;
 }
 
-/* ===== Tabs ===== */
+/* ===== Tabs (bottom, thumb-reachable) ===== */
 
 .tabs {
   display: flex;
   overflow-x: auto;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  border-top: 1px solid var(--border);
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  height: var(--nav-height);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.35);
 }
 
 .tab-btn {
   flex: 1 0 auto;
+  min-width: 4.2rem;
+  min-height: var(--touch);
   background: none;
   border: none;
   color: var(--text-dim);
-  padding: 0.8rem 1rem;
-  font-size: 0.82rem;
+  padding: 0.6rem 0.6rem;
+  font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
+  border-top: 2px solid transparent;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .tab-btn.active {
   color: var(--arcane);
-  border-bottom-color: var(--arcane);
+  border-top-color: var(--arcane);
+  background: rgba(155, 127, 224, 0.08);
 }
 
 main {
@@ -229,6 +243,7 @@ main {
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
+  min-height: var(--touch);
 }
 
 .btn:active { transform: scale(0.98); }
@@ -270,7 +285,12 @@ main {
   text-decoration: underline;
 }
 
-.back-link { margin-bottom: 0.9rem; display: inline-block; }
+.back-link {
+  margin-bottom: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+}
 
 input[type="text"],
 input[type="number"],
@@ -283,8 +303,9 @@ textarea {
   color: var(--text);
   border-radius: 8px;
   padding: 0.5rem 0.6rem;
-  font-size: 0.85rem;
+  font-size: 16px;
   font-family: inherit;
+  min-height: var(--touch);
 }
 
 input[type="text"]::placeholder,
@@ -301,6 +322,8 @@ input[type="date"] {
 
 input[type="checkbox"] {
   accent-color: var(--arcane);
+  width: 20px;
+  height: 20px;
 }
 
 select option {
@@ -320,7 +343,7 @@ select option {
 }
 
 .notes-label { margin-top: 0.7rem; }
-.notes-label .text-input { text-transform: none; font-weight: 400; font-size: 0.85rem; color: var(--text); }
+.notes-label .text-input { text-transform: none; font-weight: 400; font-size: 16px; color: var(--text); }
 
 /* ===== Category tiles ===== */
 
@@ -385,6 +408,7 @@ select option {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  min-height: var(--touch);
 }
 
 .chip:active { transform: scale(0.97); }
@@ -434,26 +458,69 @@ select option {
 
 .set-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  gap: 0.5rem 0.6rem;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
   font-family: var(--font-mono);
 }
 
+.set-row:last-child {
+  border-bottom: none;
+}
+
 .set-row .set-index {
-  width: 1.3rem;
+  width: 1.1rem;
+  flex: 0 0 auto;
   color: var(--text-dim);
   font-size: 0.78rem;
 }
 
-.set-row input[type="number"] {
-  width: 4.2rem;
+.set-row > input[type="number"] {
+  width: 5rem;
+  text-align: center;
+}
+
+.stepper-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.stepper-btn {
+  min-width: var(--touch);
+  min-height: var(--touch);
+  padding: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--arcane-dim);
+  color: var(--arcane);
+  border-radius: 8px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stepper-btn:active { transform: scale(0.95); }
+
+.stepper-group input[type="number"] {
+  width: 4.6rem;
+  padding-left: 0.3rem;
+  padding-right: 0.3rem;
+  text-align: center;
 }
 
 .set-row label.amrap-label {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.3rem;
+  min-height: var(--touch);
+  padding: 0.3rem 0.5rem;
   font-size: 0.68rem;
   color: var(--text-dim);
   text-transform: uppercase;
@@ -464,9 +531,13 @@ select option {
   border: none;
   color: var(--danger);
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 1.3rem;
   margin-left: auto;
-  padding: 0.2rem 0.4rem;
+  min-width: var(--touch);
+  min-height: var(--touch);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .logger-actions {
@@ -525,8 +596,13 @@ select option {
   border: none;
   color: var(--danger);
   cursor: pointer;
-  font-size: 0.95rem;
+  font-size: 1.1rem;
   align-self: flex-start;
+  min-width: var(--touch);
+  min-height: var(--touch);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .finish-workout-form {
@@ -659,6 +735,7 @@ select option {
   padding: 0.35rem 0.7rem;
   font-size: 0.75rem;
   cursor: pointer;
+  min-height: var(--touch);
 }
 
 .range-btn.active {
@@ -866,10 +943,13 @@ select option {
 
 .remove-exercise-btn, .delete-category-btn {
   background: none;
-  border: none;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
   color: var(--danger);
   cursor: pointer;
   font-size: 0.78rem;
+  min-height: var(--touch);
+  padding: 0 0.7rem;
 }
 
 /* ===== Import ===== */
@@ -924,7 +1004,7 @@ select option {
   border-radius: 8px;
   padding: 0.7rem;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: 16px;
   margin-bottom: 0.7rem;
   resize: vertical;
 }
@@ -950,7 +1030,7 @@ select option {
 
 .toast {
   position: fixed;
-  bottom: 1.2rem;
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 0.8rem);
   left: 50%;
   transform: translateX(-50%);
   background: var(--surface-2);
@@ -958,9 +1038,93 @@ select option {
   color: var(--text);
   padding: 0.6rem 1.1rem;
   border-radius: 999px;
-  font-size: 0.82rem;
-  z-index: 100;
+  font-size: 1rem;
+  z-index: 110;
   box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  max-width: calc(100% - 2rem);
+  text-align: center;
+}
+
+/* ===== Rest timer ===== */
+
+.rest-timer-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.6rem 0;
+}
+
+.rest-timer-controls-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+}
+
+.rest-preset-btn {
+  min-height: var(--touch);
+  padding: 0.4rem 0.8rem;
+  background: var(--surface-2);
+  border: 1px solid var(--ember-dim);
+  color: var(--ember);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.rest-timer-widget[hidden] {
+  display: none;
+}
+
+.rest-timer-widget {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 0.8rem);
+  transform: translateX(-50%);
+  z-index: 90;
+  background: var(--surface-2);
+  border: 1px solid var(--ember);
+  border-radius: 16px;
+  padding: 0.6rem 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+  max-width: calc(100% - 1.6rem);
+}
+
+.rest-timer-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+}
+
+.rest-timer-count {
+  font-family: var(--font-mono);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--ember);
+  min-width: 3ch;
+  text-align: center;
+}
+
+.rest-timer-widget .rest-timer-btn {
+  min-width: var(--touch);
+  min-height: var(--touch);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.rest-timer-widget .rest-timer-skip {
+  color: var(--danger);
 }
 
 /* ===== Responsive ===== */

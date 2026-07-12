@@ -196,16 +196,92 @@ function renderStreak() {
 }
 
 /* =========================================================================
+   Screen Wake Lock — keep the screen on while a workout is actively
+   being logged, so a sweaty gym session doesn't keep re-unlocking the phone.
+   ========================================================================= */
+
+let wakeLock = null;
+
+function isActivelyLogging() {
+  const step2 = document.getElementById('startStep2');
+  return !!(step2 && !step2.hidden && startState.draft);
+}
+
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (err) {
+    console.warn('Wake Lock request failed:', err);
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) {
+    wakeLock.release().catch(() => {});
+    wakeLock = null;
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && isActivelyLogging() && !wakeLock) {
+    acquireWakeLock();
+  }
+});
+
+/* =========================================================================
+   Unsaved-workout guard — confirm before the user loses in-progress work.
+   ========================================================================= */
+
+function loggerHasData() {
+  const l = startState.logger;
+  if (!l) return false;
+  return l.sets.some(s =>
+    (s.reps !== undefined && s.reps !== '') ||
+    (s.weight !== undefined && s.weight !== '') ||
+    (s.duration !== undefined && s.duration !== ''));
+}
+
+function hasUnsavedWorkout() {
+  return !!(startState.draft && (startState.draft.exercises.length > 0 || loggerHasData()));
+}
+
+function confirmDiscardIfNeeded() {
+  if (!hasUnsavedWorkout()) return true;
+  return confirm('You have an unsaved workout in progress. Leave without saving it?');
+}
+
+window.addEventListener('beforeunload', (e) => {
+  if (hasUnsavedWorkout()) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+/* =========================================================================
    Tab navigation
    ========================================================================= */
 
 function switchTab(tab) {
+  const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
+  if (activeTab === 'start' && tab !== 'start' && !confirmDiscardIfNeeded()) {
+    return;
+  }
+
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.classList.toggle('active', panel.id === `tab-${tab}`);
   });
+
+  if (tab !== 'start') {
+    releaseWakeLock();
+  } else if (isActivelyLogging()) {
+    acquireWakeLock();
+  }
+
   if (tab === 'history') renderHistory();
   if (tab === 'progress') renderProgress();
   if (tab === 'records') renderRecords();
@@ -262,6 +338,10 @@ function createNewCategory() {
 }
 
 function openCategoryBuilder(categoryId) {
+  if (startState.draft && startState.draft.categoryId !== categoryId && !confirmDiscardIfNeeded()) {
+    return;
+  }
+
   startState.categoryId = categoryId;
   if (!startState.draft || startState.draft.categoryId !== categoryId) {
     startState.draft = { date: todayStr(), categoryId, exercises: [] };
@@ -278,12 +358,15 @@ function openCategoryBuilder(categoryId) {
   renderWordBank();
   renderLogger();
   renderWorkoutDraft();
+  acquireWakeLock();
 }
 
 function backToCategories() {
   document.getElementById('startStep1').hidden = false;
   document.getElementById('startStep2').hidden = true;
   renderCategoryGrid();
+  releaseWakeLock();
+  stopRestTimer();
 }
 
 function renderWordBank() {
@@ -389,29 +472,44 @@ function renderLogger() {
     if (logger.type === 'weight') {
       row.innerHTML = `
         <span class="set-index">${i + 1}</span>
-        <input type="number" min="0" class="set-reps" placeholder="reps" value="${set.reps}">
-        <input type="number" min="0" step="0.5" class="set-weight" placeholder="lbs" value="${set.weight}">
+        <span class="stepper-group">
+          <button type="button" class="stepper-btn reps-minus" tabindex="-1">−</button>
+          <input type="number" min="0" inputmode="numeric" class="set-reps" placeholder="reps" value="${set.reps}">
+          <button type="button" class="stepper-btn reps-plus" tabindex="-1">+</button>
+        </span>
+        <span class="stepper-group">
+          <button type="button" class="stepper-btn weight-minus" tabindex="-1">−</button>
+          <input type="number" min="0" step="0.5" inputmode="decimal" class="set-weight" placeholder="lbs" value="${set.weight}">
+          <button type="button" class="stepper-btn weight-plus" tabindex="-1">+</button>
+        </span>
         <label class="amrap-label"><input type="checkbox" class="set-amrap" ${set.amrap ? 'checked' : ''}> AMRAP</label>
         <button class="remove-set-btn" title="Remove set">&times;</button>
       `;
     } else if (logger.type === 'bodyweight') {
       row.innerHTML = `
         <span class="set-index">${i + 1}</span>
-        <input type="number" min="0" class="set-reps" placeholder="reps" value="${set.reps}">
+        <span class="stepper-group">
+          <button type="button" class="stepper-btn reps-minus" tabindex="-1">−</button>
+          <input type="number" min="0" inputmode="numeric" class="set-reps" placeholder="reps" value="${set.reps}">
+          <button type="button" class="stepper-btn reps-plus" tabindex="-1">+</button>
+        </span>
         <label class="amrap-label"><input type="checkbox" class="set-amrap" ${set.amrap ? 'checked' : ''}> AMRAP</label>
         <button class="remove-set-btn" title="Remove set">&times;</button>
       `;
     } else {
       row.innerHTML = `
         <span class="set-index">${i + 1}</span>
-        <input type="number" min="0" class="set-duration" placeholder="seconds" value="${set.duration}">
+        <input type="number" min="0" inputmode="numeric" class="set-duration" placeholder="seconds" value="${set.duration}">
         <span style="color:var(--text-dim); font-size:0.72rem;">sec</span>
         <button class="remove-set-btn" title="Remove set">&times;</button>
       `;
     }
 
-    row.querySelector('.set-reps')?.addEventListener('input', e => { set.reps = e.target.value; });
-    row.querySelector('.set-weight')?.addEventListener('input', e => { set.weight = e.target.value; });
+    const repsInput = row.querySelector('.set-reps');
+    const weightInput = row.querySelector('.set-weight');
+
+    repsInput?.addEventListener('input', e => { set.reps = e.target.value; });
+    weightInput?.addEventListener('input', e => { set.weight = e.target.value; });
     row.querySelector('.set-duration')?.addEventListener('input', e => { set.duration = e.target.value; });
     row.querySelector('.set-amrap')?.addEventListener('change', e => { set.amrap = e.target.checked; });
     row.querySelector('.remove-set-btn').addEventListener('click', () => {
@@ -419,10 +517,48 @@ function renderLogger() {
       renderLogger();
     });
 
+    row.querySelector('.reps-minus')?.addEventListener('click', () => stepInput(repsInput, -1, 0, val => { set.reps = val; }));
+    row.querySelector('.reps-plus')?.addEventListener('click', () => stepInput(repsInput, 1, 0, val => { set.reps = val; }));
+    row.querySelector('.weight-minus')?.addEventListener('click', () => stepInput(weightInput, -5, 0, val => { set.weight = val; }));
+    row.querySelector('.weight-plus')?.addEventListener('click', () => stepInput(weightInput, 5, 0, val => { set.weight = val; }));
+
+    // Auto-advance focus from reps to weight once a value is entered, to
+    // minimize taps between fields while mid-set on a numeric keypad.
+    if (repsInput && weightInput) attachAutoAdvance(repsInput, weightInput);
+
     rowsEl.appendChild(row);
   });
 
   document.getElementById('exerciseNotes').value = logger.notes;
+}
+
+function stepInput(input, delta, min, onChange) {
+  const current = Number(input.value) || 0;
+  const next = Math.max(min, current + delta);
+  input.value = next;
+  onChange(next);
+}
+
+function attachAutoAdvance(input, nextInput) {
+  let timer = null;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    if (input.value === '') return;
+    timer = setTimeout(() => {
+      if (document.activeElement === input) {
+        nextInput.focus();
+        nextInput.select();
+      }
+    }, 650);
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      clearTimeout(timer);
+      nextInput.focus();
+      nextInput.select();
+    }
+  });
 }
 
 function addSetRow() {
@@ -540,6 +676,57 @@ function saveWorkout() {
   backToCategories();
   switchTab('history');
   showToast('Workout saved!');
+}
+
+/* =========================================================================
+   Rest timer — simple countdown you can start after logging a set.
+   ========================================================================= */
+
+const restTimerState = { remaining: 0, intervalId: null };
+
+function formatCountdown(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function renderRestTimer() {
+  const widget = document.getElementById('restTimerWidget');
+  if (restTimerState.intervalId === null) { widget.hidden = true; return; }
+  widget.hidden = false;
+  document.getElementById('restTimerCount').textContent = formatCountdown(restTimerState.remaining);
+}
+
+function startRestTimer(seconds) {
+  clearInterval(restTimerState.intervalId);
+  restTimerState.remaining = seconds;
+  restTimerState.intervalId = setInterval(restTimerTick, 1000);
+  renderRestTimer();
+}
+
+function restTimerTick() {
+  restTimerState.remaining = Math.max(0, restTimerState.remaining - 1);
+  renderRestTimer();
+  if (restTimerState.remaining === 0) {
+    clearInterval(restTimerState.intervalId);
+    restTimerState.intervalId = null;
+    if (navigator.vibrate) { try { navigator.vibrate([200, 100, 200]); } catch (e) { /* no-op */ } }
+    showToast('Rest complete — back to it!');
+    renderRestTimer();
+  }
+}
+
+function adjustRestTimer(delta) {
+  if (restTimerState.intervalId === null) return;
+  restTimerState.remaining = Math.max(0, restTimerState.remaining + delta);
+  renderRestTimer();
+}
+
+function stopRestTimer() {
+  clearInterval(restTimerState.intervalId);
+  restTimerState.intervalId = null;
+  restTimerState.remaining = 0;
+  renderRestTimer();
 }
 
 /* =========================================================================
@@ -1123,6 +1310,13 @@ function bindEvents() {
     recordsState.categoryId = e.target.value;
     renderRecords();
   });
+
+  document.querySelectorAll('.rest-preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => startRestTimer(Number(btn.dataset.secs)));
+  });
+  document.getElementById('restTimerMinus').addEventListener('click', () => adjustRestTimer(-15));
+  document.getElementById('restTimerPlus').addEventListener('click', () => adjustRestTimer(15));
+  document.getElementById('restTimerSkip').addEventListener('click', stopRestTimer);
 }
 
 function init() {

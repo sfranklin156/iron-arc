@@ -104,6 +104,12 @@
           <button class="btn btn-ghost" id="addSetBtn">+ Add Set</button>
           <button class="btn btn-ghost" id="sameAsLastBtn">Same as Last Set</button>
         </div>
+        <div class="rest-timer-controls">
+          <span class="rest-timer-controls-label">Rest Timer</span>
+          <button class="rest-preset-btn" data-secs="60">60s</button>
+          <button class="rest-preset-btn" data-secs="90">90s</button>
+          <button class="rest-preset-btn" data-secs="180">3:00</button>
+        </div>
         <label class="field-label notes-label">
           Notes (optional)
           <input type="text" id="exerciseNotes" class="text-input" placeholder="e.g. went to failure">
@@ -122,11 +128,11 @@
           <div class="finish-row">
             <label class="field-label">
               Active Calories Burned
-              <input type="number" min="0" id="activeCalories" class="number-input" placeholder="0">
+              <input type="number" min="0" inputmode="numeric" id="activeCalories" class="number-input" placeholder="0">
             </label>
             <label class="field-label">
               Total Calories Burned
-              <input type="number" min="0" id="totalCalories" class="number-input" placeholder="0">
+              <input type="number" min="0" inputmode="numeric" id="totalCalories" class="number-input" placeholder="0">
             </label>
           </div>
           <label class="field-label effort-label">
@@ -239,6 +245,14 @@
 </main>
 
 <div class="toast" id="toast" hidden></div>
+
+<div class="rest-timer-widget" id="restTimerWidget" hidden>
+  <span class="rest-timer-label">Rest</span>
+  <span class="rest-timer-count" id="restTimerCount">0:00</span>
+  <button class="rest-timer-btn" id="restTimerMinus" title="Subtract 15 seconds">−15s</button>
+  <button class="rest-timer-btn" id="restTimerPlus" title="Add 15 seconds">+15s</button>
+  <button class="rest-timer-btn rest-timer-skip" id="restTimerSkip">Skip</button>
+</div>
 
 <script src="js/app.js"></script>
 </body>
