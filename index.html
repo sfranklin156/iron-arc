@@ -178,7 +178,8 @@
         </div>
       </div>
       <div class="chart-wrap">
-        <div class="bar-chart" id="progressChart"></div>
+        <span class="chart-unit-label" id="chartUnitLabel"></span>
+        <div class="line-chart" id="progressChart"></div>
       </div>
       <table class="session-log-table" id="sessionLogTable">
         <thead>
@@ -192,6 +193,12 @@
   <!-- RECORDS TAB -->
   <section class="tab-panel" id="tab-records">
     <h2 class="section-heading">Records</h2>
+    <label class="field-label records-filter-label">
+      Filter by Workout Day
+      <select id="recordsCategoryFilter" class="select-input">
+        <option value="all">All Categories</option>
+      </select>
+    </label>
     <div class="records-list" id="recordsList"></div>
     <p class="empty-state" id="recordsEmpty" hidden>No records yet — log a workout to start setting them.</p>
   </section>

@@ -689,6 +689,12 @@ function formatBestSet(type, set) {
   return `${set.duration || 0} sec`;
 }
 
+function chartUnitLabel(type) {
+  if (type === 'weight') return 'Tracking heaviest weight lifted per session (lbs)';
+  if (type === 'bodyweight') return 'Tracking best reps per session';
+  return 'Tracking longest hold per session (sec)';
+}
+
 function rangeStartMs(range) {
   if (range === 'all') return -Infinity;
   const days = { '30': 30, '90': 90, '365': 365 }[range];
@@ -713,6 +719,7 @@ function renderProgressDetail() {
     document.getElementById('statPR').textContent = '—';
     document.getElementById('statCount').textContent = '0';
     document.getElementById('statRecent').textContent = '—';
+    document.getElementById('chartUnitLabel').textContent = '';
     document.getElementById('progressChart').innerHTML = '<span class="empty-state">No sessions in this range.</span>';
     document.getElementById('sessionLogBody').innerHTML = '';
     return;
@@ -736,20 +743,43 @@ function renderProgressDetail() {
   document.getElementById('statPR').textContent = formatBestSet(type, prSession.best);
   document.getElementById('statCount').textContent = String(sessions.length);
   document.getElementById('statRecent').textContent = formatBestSet(type, sessionBests[sessionBests.length - 1].best);
+  document.getElementById('chartUnitLabel').textContent = chartUnitLabel(type);
 
   const chart = document.getElementById('progressChart');
-  chart.innerHTML = '';
+  const marginX = 28;
+  const pointGap = 56;
+  const width = Math.max(280, marginX * 2 + (sessionBests.length - 1) * pointGap);
+  const height = 170;
+  const plotTop = 14, plotBottom = 120, labelY = 138;
   const maxVal = Math.max(...sessionBests.map(s => s.bestVal), 1);
-  for (const s of sessionBests) {
-    const col = document.createElement('div');
-    col.className = 'bar-chart-col';
-    const heightPct = Math.max(2, (s.bestVal / maxVal) * 100);
-    col.innerHTML = `
-      <div class="bar${s.bestVal === prSession.bestVal ? ' best' : ''}" style="height:${heightPct}%" title="${formatDateDisplay(s.date)}: ${formatBestSet(type, s.best)}"></div>
-      <span class="bar-label">${formatDateShort(s.date)}</span>
-    `;
-    chart.appendChild(col);
-  }
+  const effectiveMax = maxVal * 1.15;
+
+  const xAt = (i) => sessionBests.length === 1 ? width / 2 : marginX + i * ((width - marginX * 2) / (sessionBests.length - 1));
+  const yAt = (val) => plotBottom - (val / effectiveMax) * (plotBottom - plotTop);
+
+  const points = sessionBests.map((s, i) => ({ x: xAt(i), y: yAt(s.bestVal), s }));
+
+  const polylinePts = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const circles = points.map(p => {
+    const isBest = p.s.bestVal === prSession.bestVal;
+    return `<circle class="line-chart-point${isBest ? ' best' : ''}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${isBest ? 5 : 3.5}"><title>${formatDateDisplay(p.s.date)}: ${formatBestSet(type, p.s.best)}</title></circle>`;
+  }).join('');
+  const dateLabels = points.map(p =>
+    `<text class="line-chart-label" x="${p.x.toFixed(1)}" y="${labelY}" text-anchor="middle">${formatDateShort(p.s.date)}</text>`
+  ).join('');
+  const bestPoint = points.find(p => p.s.bestVal === prSession.bestVal);
+  const bestLabel = bestPoint
+    ? `<text class="line-chart-value-label best" x="${bestPoint.x.toFixed(1)}" y="${(bestPoint.y - 9).toFixed(1)}" text-anchor="middle">${Math.round(bestPoint.s.bestVal)}</text>`
+    : '';
+
+  chart.innerHTML = `
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <polyline class="line-chart-line" points="${polylinePts}"></polyline>
+      ${circles}
+      ${dateLabels}
+      ${bestLabel}
+    </svg>
+  `;
 
   const body = document.getElementById('sessionLogBody');
   body.innerHTML = sessionBests.slice().reverse().map(s => `
@@ -766,13 +796,33 @@ function renderProgressDetail() {
    RECORDS TAB
    ========================================================================= */
 
+const recordsState = { categoryId: 'all' };
+
+function renderRecordsCategoryFilter() {
+  const select = document.getElementById('recordsCategoryFilter');
+  const prevValue = recordsState.categoryId;
+  select.innerHTML = '<option value="all">All Categories</option>' +
+    data.categories.map(cat => `<option value="${cat.id}">${escapeHtml(cat.name)}</option>`).join('');
+
+  if (prevValue !== 'all' && !data.categories.some(c => c.id === prevValue)) {
+    recordsState.categoryId = 'all';
+  }
+  select.value = recordsState.categoryId;
+}
+
 function renderRecords() {
+  renderRecordsCategoryFilter();
+
   const list = document.getElementById('recordsList');
   const emptyEl = document.getElementById('recordsEmpty');
   list.innerHTML = '';
   let anyRecords = false;
 
-  for (const cat of data.categories) {
+  const categoriesToShow = recordsState.categoryId === 'all'
+    ? data.categories
+    : data.categories.filter(c => c.id === recordsState.categoryId);
+
+  for (const cat of categoriesToShow) {
     const rows = [];
     for (const ex of cat.exercises) {
       let best = null;
@@ -810,6 +860,9 @@ function renderRecords() {
   }
 
   emptyEl.hidden = anyRecords;
+  emptyEl.textContent = recordsState.categoryId === 'all'
+    ? 'No records yet — log a workout to start setting them.'
+    : 'No records for this category yet.';
 }
 
 /* =========================================================================
@@ -1065,6 +1118,11 @@ function bindEvents() {
   });
 
   document.getElementById('importBtn').addEventListener('click', runImport);
+
+  document.getElementById('recordsCategoryFilter').addEventListener('change', (e) => {
+    recordsState.categoryId = e.target.value;
+    renderRecords();
+  });
 }
 
 function init() {
