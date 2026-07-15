@@ -1694,15 +1694,74 @@ function bindEvents() {
   });
 }
 
+/* =========================================================================
+   Service worker registration + update detection
+
+   The SW itself calls skipWaiting()/clients.claim(), so a new version
+   activates and takes control in the background right away — it does not
+   sit "waiting" forever just because a home-screen PWA is never fully
+   closed. But the already-open page keeps running whatever JS it already
+   loaded into memory, so we still need to tell the user a fresh version
+   is ready and let THEM choose when to reload, rather than silently
+   reloading out from under an in-progress workout.
+   ========================================================================= */
+
+function showUpdateBanner() {
+  document.getElementById('updateBanner').hidden = false;
+}
+
+function initServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+
+  // If a controller already exists at load time, this page was served by
+  // a previously-installed SW. The very first controllerchange for a
+  // brand-new install (no prior controller) is just the initial claim,
+  // not an "update" — only flag subsequent ones as real updates.
+  let controllerChangeIsRealUpdate = !!navigator.serviceWorker.controller;
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (controllerChangeIsRealUpdate) {
+      showUpdateBanner();
+    }
+    controllerChangeIsRealUpdate = true;
+  });
+
+  window.addEventListener('load', async () => {
+    try {
+      // updateViaCache: 'none' stops the browser from serving sw.js itself
+      // out of HTTP cache when checking for updates — otherwise the
+      // "update available" check can keep comparing against a stale
+      // cached copy of the old script and never notice a change.
+      const registration = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+
+      // Don't wait for the browser's own update schedule — check now.
+      registration.update().catch(() => {});
+
+      // A home-screen PWA is usually resumed from a backgrounded/suspended
+      // state rather than freshly navigated to, so re-check whenever it
+      // comes back to the foreground.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          registration.update().catch(() => {});
+        }
+      });
+    } catch (err) {
+      console.warn('SW registration failed:', err);
+    }
+  });
+}
+
 function init() {
   bindEvents();
   renderAll();
+  initServiceWorker();
 
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW registration failed:', err));
-    });
-  }
+  document.getElementById('updateBannerRefreshBtn').addEventListener('click', () => {
+    window.location.reload();
+  });
+  document.getElementById('updateBannerDismissBtn').addEventListener('click', () => {
+    document.getElementById('updateBanner').hidden = true;
+  });
 }
 
 document.addEventListener('DOMContentLoaded', init);

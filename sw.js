@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'iron-arc-v2';
+const CACHE_NAME = 'iron-arc-v3';
 
 const APP_SHELL = [
   './',

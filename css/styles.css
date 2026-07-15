@@ -1210,6 +1210,65 @@ select option {
   white-space: pre-wrap;
 }
 
+/* ===== Update banner ===== */
+
+.update-banner[hidden] {
+  display: none;
+}
+
+.update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 300;
+  background: var(--ember);
+  color: #14101c;
+  padding: 0.7rem 0.8rem 0.7rem 1rem;
+  padding-top: calc(0.7rem + env(safe-area-inset-top));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.35);
+}
+
+.update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+
+.update-banner-refresh-btn {
+  background: #14101c;
+  color: var(--ember);
+  border: none;
+  border-radius: 8px;
+  padding: 0.4rem 0.8rem;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  min-height: var(--touch);
+  white-space: nowrap;
+}
+
+.update-banner-dismiss-btn {
+  background: none;
+  border: none;
+  color: #14101c;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  min-width: var(--touch);
+  min-height: var(--touch);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* ===== Toast ===== */
 
 .toast {
