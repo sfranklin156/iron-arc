@@ -389,6 +389,16 @@ select option {
 
 /* ===== Word bank chips ===== */
 
+.editing-banner {
+  background: rgba(224, 164, 88, 0.1);
+  border: 1px solid var(--ember-dim);
+  color: var(--ember);
+  border-radius: 8px;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.8rem;
+  margin-bottom: 0.9rem;
+}
+
 .wordbank-section { margin-bottom: 1.2rem; }
 
 .chip-row {
@@ -841,7 +851,9 @@ select option {
 
 .history-item-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 0.5rem;
   margin-top: 0.6rem;
 }
 

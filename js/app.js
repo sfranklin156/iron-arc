@@ -248,6 +248,9 @@ function hasUnsavedWorkout() {
 
 function confirmDiscardIfNeeded() {
   if (!hasUnsavedWorkout()) return true;
+  if (startState.draft && startState.draft.editingWorkoutId) {
+    return confirm('Discard your changes to this workout?');
+  }
   return confirm('You have an unsaved workout in progress. Leave without saving it?');
 }
 
@@ -361,7 +364,37 @@ function openCategoryBuilder(categoryId) {
 
   renderWordBank();
   renderWorkoutDraft();
+  updateEditModeUI();
   acquireWakeLock();
+}
+
+function updateEditModeUI() {
+  const isEditing = !!(startState.draft && startState.draft.editingWorkoutId);
+  document.getElementById('editingBanner').hidden = !isEditing;
+  document.getElementById('saveWorkoutBtn').textContent = isEditing ? 'Update Workout' : 'Save Workout';
+}
+
+function startEditingWorkout(workoutId) {
+  const workout = data.workouts.find(w => w.id === workoutId);
+  if (!workout) return;
+  if (!confirmDiscardIfNeeded()) return;
+
+  startState.draft = {
+    date: workout.date,
+    categoryId: workout.categoryId,
+    exercises: workout.exercises.map(ex => ({ ...ex, sets: ex.sets.map(s => ({ ...s })) })),
+    editingWorkoutId: workout.id,
+  };
+
+  switchTab('start');
+  openCategoryBuilder(workout.categoryId);
+
+  document.getElementById('activeCalories').value = workout.activeCalories || '';
+  document.getElementById('totalCalories').value = workout.totalCalories || '';
+  document.getElementById('effortSlider').value = workout.effort || 5;
+  document.getElementById('effortValue').textContent = workout.effort || 5;
+
+  showToast(`Editing workout from ${formatDateDisplay(workout.date)}.`);
 }
 
 function backToCategories() {
@@ -669,6 +702,7 @@ function addLoggerToWorkout() {
 
 function renderWorkoutDraft() {
   const draft = startState.draft;
+  updateEditModeUI();
   const section = document.getElementById('thisWorkoutSection');
   if (!draft || draft.exercises.length === 0) {
     section.hidden = true;
@@ -708,17 +742,32 @@ function saveWorkout() {
   const draft = startState.draft;
   if (!draft || draft.exercises.length === 0) return;
 
-  const workout = {
-    id: uid('wkt'),
-    date: draft.date,
-    categoryId: draft.categoryId,
-    exercises: draft.exercises,
-    activeCalories: Number(document.getElementById('activeCalories').value) || 0,
-    totalCalories: Number(document.getElementById('totalCalories').value) || 0,
-    effort: Number(document.getElementById('effortSlider').value) || 5,
-    createdAt: Date.now(),
-  };
-  data.workouts.push(workout);
+  const activeCalories = Number(document.getElementById('activeCalories').value) || 0;
+  const totalCalories = Number(document.getElementById('totalCalories').value) || 0;
+  const effort = Number(document.getElementById('effortSlider').value) || 5;
+  const editingWorkoutId = draft.editingWorkoutId || null;
+
+  if (editingWorkoutId) {
+    const existing = data.workouts.find(w => w.id === editingWorkoutId);
+    if (existing) {
+      existing.date = draft.date;
+      existing.exercises = draft.exercises;
+      existing.activeCalories = activeCalories;
+      existing.totalCalories = totalCalories;
+      existing.effort = effort;
+    }
+  } else {
+    data.workouts.push({
+      id: uid('wkt'),
+      date: draft.date,
+      categoryId: draft.categoryId,
+      exercises: draft.exercises,
+      activeCalories,
+      totalCalories,
+      effort,
+      createdAt: Date.now(),
+    });
+  }
   saveData();
 
   startState.draft = null;
@@ -730,10 +779,12 @@ function saveWorkout() {
   document.getElementById('effortSlider').value = 5;
   document.getElementById('effortValue').textContent = '5';
 
+  if (editingWorkoutId) expandedWorkoutId = editingWorkoutId;
+
   renderAll();
   backToCategories();
   switchTab('history');
-  showToast('Workout saved!');
+  showToast(editingWorkoutId ? 'Workout updated!' : 'Workout saved!');
 }
 
 /* =========================================================================
@@ -924,6 +975,7 @@ function buildHistoryItem(w) {
         <span>Effort: ${w.effort}/10</span>
       </div>
       <div class="history-item-actions">
+        <button class="btn btn-ghost edit-workout-btn">Edit Workout</button>
         <button class="btn btn-ghost btn-danger delete-workout-btn">Delete Workout</button>
       </div>
     </div>
@@ -932,6 +984,10 @@ function buildHistoryItem(w) {
   item.querySelector('.history-item-header').addEventListener('click', () => {
     expandedWorkoutId = expandedWorkoutId === w.id ? null : w.id;
     renderHistory();
+  });
+  item.querySelector('.edit-workout-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    startEditingWorkout(w.id);
   });
   item.querySelector('.delete-workout-btn').addEventListener('click', (e) => {
     e.stopPropagation();
