@@ -1455,6 +1455,107 @@ function runImport() {
 }
 
 /* =========================================================================
+   EXPORT (same CSV format as Import, so it round-trips)
+   ========================================================================= */
+
+function sanitizeForCsv(str) {
+  return String(str || '').replace(/,/g, ';').replace(/\r?\n/g, ' ').trim();
+}
+
+function generateExportText() {
+  const sorted = [...data.workouts].sort((a, b) =>
+    parseDateUTCms(a.date) - parseDateUTCms(b.date) || a.createdAt - b.createdAt);
+
+  const lines = [];
+  let setCount = 0;
+
+  for (const w of sorted) {
+    const cat = getCategory(w.categoryId);
+    const catName = sanitizeForCsv(cat ? cat.name : 'Unknown');
+
+    for (const ex of w.exercises) {
+      const equipment = ex.equipment || 'Other';
+      const notes = sanitizeForCsv(ex.notes);
+      const exName = sanitizeForCsv(ex.name);
+
+      for (const set of ex.sets) {
+        let repsField, weightField;
+        if (ex.type === 'weight') {
+          repsField = set.reps ?? 0;
+          weightField = set.weight ?? 0;
+        } else if (ex.type === 'bodyweight') {
+          repsField = set.reps ?? 0;
+          weightField = 'bw';
+        } else {
+          repsField = set.duration ?? 0;
+          weightField = set.duration ?? 0;
+        }
+        const amrapField = set.amrap ? 'yes' : 'no';
+        lines.push([w.date, catName, exName, repsField, weightField, notes, equipment, amrapField].join(','));
+        setCount++;
+      }
+    }
+
+    lines.push(['#SUMMARY', w.date, catName, w.activeCalories || 0, w.totalCalories || 0, w.effort || 5].join(','));
+  }
+
+  return { text: lines.join('\n'), workoutCount: sorted.length, setCount };
+}
+
+function fallbackCopyToClipboard(textarea) {
+  textarea.removeAttribute('readonly');
+  textarea.focus();
+  textarea.select();
+  const ok = document.execCommand && document.execCommand('copy');
+  textarea.setAttribute('readonly', '');
+  return !!ok;
+}
+
+async function copyExportToClipboard() {
+  const { text, workoutCount, setCount } = generateExportText();
+  const textarea = document.getElementById('exportTextarea');
+  textarea.value = text;
+
+  if (workoutCount === 0) {
+    showToast('No workouts to export yet.');
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(`Copied ${setCount} sets from ${workoutCount} workout${workoutCount === 1 ? '' : 's'}.`);
+  } catch (err) {
+    if (fallbackCopyToClipboard(textarea)) {
+      showToast(`Copied ${setCount} sets from ${workoutCount} workout${workoutCount === 1 ? '' : 's'}.`);
+    } else {
+      textarea.select();
+      showToast('Clipboard access blocked — text is selected, press Ctrl/Cmd+C to copy.');
+    }
+  }
+}
+
+function downloadExportFile() {
+  const { text, workoutCount, setCount } = generateExportText();
+  document.getElementById('exportTextarea').value = text;
+
+  if (workoutCount === 0) {
+    showToast('No workouts to export yet.');
+    return;
+  }
+
+  const blob = new Blob([text], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `iron-arc-export-${todayStr()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast(`Downloaded ${setCount} sets from ${workoutCount} workout${workoutCount === 1 ? '' : 's'}.`);
+}
+
+/* =========================================================================
    Global render + init
    ========================================================================= */
 
@@ -1511,6 +1612,8 @@ function bindEvents() {
   });
 
   document.getElementById('importBtn').addEventListener('click', runImport);
+  document.getElementById('exportDownloadBtn').addEventListener('click', downloadExportFile);
+  document.getElementById('exportCopyBtn').addEventListener('click', copyExportToClipboard);
 
   document.getElementById('recordsCategoryFilter').addEventListener('change', (e) => {
     recordsState.categoryId = e.target.value;

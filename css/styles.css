@@ -1111,7 +1111,20 @@ select option {
   padding: 0 0.7rem;
 }
 
-/* ===== Import ===== */
+/* ===== Import / Export ===== */
+
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.import-heading-divider {
+  margin-top: 1.8rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--border);
+}
 
 .import-help {
   font-size: 0.85rem;

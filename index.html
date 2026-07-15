@@ -198,7 +198,20 @@
 
   <!-- IMPORT TAB -->
   <section class="tab-panel" id="tab-import">
-    <h2 class="section-heading">Import</h2>
+    <h2 class="section-heading">Import / Export</h2>
+
+    <h3 class="subsection-heading">Export Your Data</h3>
+    <p class="import-help">
+      Download or copy everything you've logged in the same comma-separated format described below, so you can back it up or move it to another device.
+      Commas inside notes are replaced with semicolons to keep the format import-safe.
+    </p>
+    <div class="export-actions">
+      <button class="btn btn-secondary" id="exportDownloadBtn">Download .csv</button>
+      <button class="btn btn-secondary" id="exportCopyBtn">Copy to Clipboard</button>
+    </div>
+    <textarea id="exportTextarea" class="import-textarea" readonly placeholder="Your exported data will appear here…"></textarea>
+
+    <h3 class="subsection-heading import-heading-divider">Import Data</h3>
     <p class="import-help">
       Paste comma-separated rows below, one workout set per line:<br>
       <code>date,category,exercise,reps,weight,notes,equipment,amrap</code>
